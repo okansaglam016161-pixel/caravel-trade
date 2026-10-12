@@ -43,8 +43,11 @@ mod caravel_test_dollar {
             let allocation = CallerContext::allocate_component_address(None);
             let me = allocation.get_address();
 
+            // No owner: a resource owner passes its own mint and burn rules, so with the default
+            // (the deployer's key) the deployer could pre-mint someone's receipt and block their claim.
             let receipts = ResourceBuilder::non_fungible()
                 .with_token_symbol("CUSDCLAIM")
+                .with_owner_rule(OwnerRule::None)
                 .mintable(rule!(component(me)), LOCKED)
                 .burnable(rule!(component(me)), LOCKED)
                 .build();

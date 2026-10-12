@@ -74,33 +74,28 @@ fn two_claims_in_one_transaction_are_refused() {
 }
 
 #[test]
-fn finding_the_faucet_deployer_can_block_a_wallets_claim() {
-    // FINDING: the claim-receipt NFT resource is built without an owner rule, so its owner defaults to
-    // the key that deployed the faucet, and a resource owner passes the receipt's mint and burn rules.
-    // The deployer can therefore mint-and-burn the receipt of any key before that key claims, and the
-    // key's own claim then fails as a duplicate. It cannot create, take or freeze cUSD.
+fn nobody_can_block_a_wallets_claim_not_even_the_deployer() {
+    // ATTACK: mint-and-burn a victim's claim receipt before they claim, so their own claim fails as a
+    // duplicate. The receipt resource has no owner, so only the faucet component passes its mint rule.
     let mut w = world();
     let victim = w.party();
     let receipts: ResourceAddress = w.test.extract_component_value(w.faucet, "$.1");
-    println!("receipt resource owner: {:?}", w.test.read_only_state_store().get_resource(&receipts).unwrap().owner_rule());
+    let owner = format!("{:?}", w.test.read_only_state_store().get_resource(&receipts).unwrap().owner_rule());
+    assert!(owner.contains("None"), "the receipt resource must have no owner: {owner}");
 
-    // A stranger cannot do it.
+    // A stranger.
     let stranger = w.party();
     let o = w.run(w.tx().call_function(grief(&w), "burn_receipt_of", args![receipts, victim.pk]), &stranger, &[]);
-    println!("stranger pre-burns a receipt: {}", if o.ok() { "ALLOWED".to_string() } else { o.error.clone() });
-    assert!(!o.ok(), "a stranger blocked someone's claim");
+    o.expect_err("a stranger pre-burns a receipt", "Access Denied");
 
-    // The faucet's deployer (the harness's default key here).
+    // The faucet's deployer (the harness's default key deployed it).
     let tx = w.tx().call_function(grief(&w), "burn_receipt_of", args![receipts, victim.pk]).finish().seal(w.test.secret_key());
-    let o = w.exec(tx);
-    println!("deployer pre-burns a receipt: {}", if o.ok() { "ALLOWED".to_string() } else { o.error.clone() });
-    let claim = w.claim_to_account(&victim);
-    println!("victim's claim afterwards: {}", if claim.ok() { "ok".to_string() } else { claim.error.clone() });
-    if o.ok() {
-        assert!(!claim.ok(), "documented: the deployer CAN block a wallet's claim");
-    } else {
-        claim.expect_ok("the victim's claim");
-    }
+    w.exec(tx).expect_err("the deployer pre-burns a receipt", "Access Denied");
+
+    // The victim's claim still works, and only once.
+    w.claim_to_account(&victim).expect_ok("the victim's claim");
+    assert_eq!(w.balance(victim.account, w.cusd), Amount::from(10_000 * T));
+    w.claim_to_account(&victim).expect_err("a second claim", "Duplicate");
 }
 
 // ── Unfillable and stuck orders ──────────────────────────────────────────────
