@@ -1,0 +1,29 @@
+[package]
+name = "caravel_trade_tests"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "Local functional tests for the Caravel Trade templates. Nothing here touches a network."
+license = "MIT"
+
+[dependencies]
+
+[dev-dependencies]
+tari_template_test_tooling = "0.45"
+tari_template_lib = { version = "0.34" }
+tari_bor = "=0.16.3"
+rand = "0.10"
+
+# Wasmer + Cranelift are very slow unoptimised; optimise just those crates in test builds.
+[profile.dev.package.wasmer]
+opt-level = 2
+[profile.dev.package.wasmer-compiler]
+opt-level = 2
+[profile.dev.package.wasmer-compiler-cranelift]
+opt-level = 2
+[profile.dev.package.cranelift-codegen]
+opt-level = 2
+[profile.dev.package.cranelift-frontend]
+opt-level = 2
+[profile.dev.package.cranelift-entity]
+opt-level = 2
