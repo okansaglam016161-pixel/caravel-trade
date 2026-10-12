@@ -33,9 +33,28 @@ fn only_the_owner_can_change_settings_or_pause() {
 fn settings_are_range_checked() {
     let mut w = world();
     let board = w.board;
-    w.as_owner(w.tx().call_method(board, "set_fee", args![1001u16, 70u8])).expect_err("fee over 10%", "at most 10%");
+    w.as_owner(w.tx().call_method(board, "set_fee", args![10_001u16, 70u8])).expect_err("fee over 100%", "at most 100%");
     w.as_owner(w.tx().call_method(board, "set_fee", args![100u16, 101u8])).expect_err("share over 100", "percentage");
     w.as_owner(w.tx().call_method(board, "set_min_order", args![Amount::zero()])).expect_err("zero minimum", "positive");
+}
+
+#[test]
+fn a_fee_above_10_percent_is_allowed() {
+    let mut w = world();
+    let board = w.board;
+    w.as_owner(w.tx().call_method(board, "set_fee", args![2_000u16, 70u8])).expect_ok("a 20% fee");
+    let maker = w.party();
+    let taker = w.party();
+    let (_, cancel) = keypair();
+    let placed = w.place(&maker, SELL, N, P, Funds::Public, Funds::Public, cancel);
+    placed.outcome.expect_ok("place at 20%");
+    assert_eq!(w.order_fee(placed.order), 20 * T);
+    assert_eq!(w.order_cuts(placed.order), (14 * T, 6 * T));
+    let (c0, b0) = (w.caravel_tari(), w.burned());
+    w.fill(&taker, placed.order, Funds::Public, Funds::Public).0.expect_ok("fill at 20%");
+    assert_eq!(w.caravel_tari() - c0, Amount::from(14 * T));
+    assert_eq!(w.burned() - b0, Amount::from(6 * T));
+    w.as_owner(w.tx().call_method(board, "set_fee", args![10_000u16, 70u8])).expect_ok("exactly 100% is the bound");
 }
 
 #[test]

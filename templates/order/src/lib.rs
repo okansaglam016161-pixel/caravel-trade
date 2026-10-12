@@ -86,7 +86,7 @@ mod caravel_trade_order {
 
             assert!(side == SELL || side == BUY, "The side must be SELL or BUY");
             assert!(n.is_positive() && p.is_positive(), "Both amounts must be positive");
-            assert!(fee_bps <= 1_000 && caravel_pct <= 100, "Fee settings out of range");
+            assert!(fee_bps <= 10_000 && caravel_pct <= 100, "Fee settings out of range");
 
             let fee = n * Amount::from(fee_bps) / Amount::from(10_000u64);
             let caravel_cut = fee * Amount::from(caravel_pct) / Amount::from(100u64);

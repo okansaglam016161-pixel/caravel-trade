@@ -153,9 +153,9 @@ mod caravel_trade_board {
 
         // ── Owner only ───────────────────────────────────────────────────────────
 
-        /// The fee in basis points (at most 10%) and Caravel's share of it in percent.
+        /// The fee in basis points (at most 100%, 10,000 bps) and Caravel's share of it in percent.
         pub fn set_fee(&mut self, fee_bps: u16, caravel_pct: u8) {
-            assert!(fee_bps <= 1_000, "The fee may be at most 10%");
+            assert!(fee_bps <= 10_000, "The fee may be at most 100%");
             assert!(caravel_pct <= 100, "Caravel's share is a percentage");
             self.fee_bps = fee_bps;
             self.caravel_pct = caravel_pct;
