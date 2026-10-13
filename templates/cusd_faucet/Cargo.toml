@@ -22,7 +22,7 @@ tari_template_lib = { version = "0.34" }
 crate-type = ["cdylib"]
 
 [build-dependencies]
-tari_ootle_template_build = "0.14"
+tari_ootle_template_build = "0.15.0"
 
 # The size profile `tari build` / `tari publish` pass, so a plain `cargo build --release` matches.
 [profile.release]
