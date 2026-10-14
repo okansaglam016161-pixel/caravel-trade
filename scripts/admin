@@ -1,0 +1,210 @@
+#!/usr/bin/env python3
+"""Caravel Trade Board admin, through the deployer's wallet daemon. Testnet only.
+
+    source ~/tari-tools/deployer.env                  # exports TARI_WALLET_DAEMON_API_KEY
+    scripts/admin show                                 # the live settings (read only, no wallet needed)
+    scripts/admin set-fee 100 70                       # fee 1% (100 bps), Caravel's share 70% (burn 30%)
+    scripts/admin set-fee-account component_...        # where Caravel's share of the fee goes
+    scripts/admin set-min 1                            # minimum order, in tTARI (decimals allowed)
+    scripts/admin pause | unpause                      # stop / resume NEW orders (existing ones are untouched)
+
+Every change is a DRY RUN unless --submit is given: it shows the settings before and after, the fee,
+and stops. With --submit it sends the same transaction, waits for Accept, and reads the result back.
+
+The Board is owned by the deployer's key, so the transaction must be sealed by it: the daemon seals
+with its default account's key, and the script refuses to run unless that key is the Board's owner.
+Settings only ever apply to orders placed afterwards. Fees are paid from the default account's
+public balance. The API key is read from the environment and only ever sent as a bearer token.
+"""
+
+import argparse
+import json
+import os
+import sys
+import urllib.request
+from decimal import Decimal, InvalidOperation
+
+NETWORK = "esmeralda"
+INDEXERS = ["https://ootle-indexer-a.tari.com", "https://ootle-indexer-b.tari.com"]
+# Created on esmeralda on 2026-10-14 (see the README's Live deployment).
+BOARD = "component_353a1767f7d1f98984120d1ce5adc1bf7f9b58093b3c4d5539fc106fd2e7526d"
+BOARD_TEMPLATE = "6e9bb8eba68c45e3b5301e1f5ce2e350927cfbffc392c6ed39a4ddb550b8834f"
+
+DRY_RUN_MAX_FEE = 100_000
+FEE_MARGIN = 1.10  # over the dry run's required fee; anything unused is refunded
+UNIT = 1_000_000   # µT per tTARI
+
+# The Board's state, in field order (templates/board/src/lib.rs).
+FIELDS = ["order_template", "quote", "fee_bps", "caravel_pct", "caravel_account", "burn_wallet",
+          "min_order", "paused", "badge", "badge_resource"]
+
+
+def hexof(value):
+    """An address in component state: tagged CBOR JSON on the 0.46 indexer, a plain string before."""
+    if isinstance(value, dict) and value.get("@cbor") == "tag":
+        value = value["value"]
+    if isinstance(value, dict) and value.get("@cbor") == "bytes":
+        return value["hex"]
+    return str(value).split("_")[-1]
+
+
+def settings(component):
+    """The Board's settings from a component substate (indexer or dry-run result)."""
+    if component["header"]["template_address"] != BOARD_TEMPLATE:
+        sys.exit(f"not a Caravel Trade Board (template {component['header']['template_address'][:16]})")
+    s = dict(zip(FIELDS, component["body"]["state"]))
+    return {
+        "owner": component["header"]["owner_rule"],
+        "fee": f"{s['fee_bps']} bps ({Decimal(s['fee_bps']) / 100}%)",
+        "split": f"{s['caravel_pct']}% Caravel / {100 - s['caravel_pct']}% Burn Wallet",
+        "caravel_account": f"component_{hexof(s['caravel_account'])}",
+        "burn_wallet": f"component_{hexof(s['burn_wallet'])}",
+        "min_order": f"{Decimal(s['min_order']) / UNIT} tTARI ({s['min_order']} µT)",
+        "new_orders": "PAUSED" if s["paused"] else "open",
+        "quote": f"resource_{hexof(s['quote'])}",
+        "order_template": f"template_{hexof(s['order_template'])}",
+    }
+
+
+def read_board(board):
+    last = None
+    for base in INDEXERS:
+        try:
+            req = urllib.request.Request(f"{base}/substates/{board}", headers={"User-Agent": "caravel-trade-admin"})
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                return json.load(resp)["substate"]["Component"], base
+        except Exception as e:  # noqa: BLE001 (try the other indexer, report the last failure)
+            last = e
+    sys.exit(f"could not read {board}: {last}")
+
+
+def print_settings(title, s, before=None):
+    print(title)
+    for k, v in s.items():
+        changed = before is not None and before.get(k) != v
+        print(f"  {k:<16}{json.dumps(v) if k == 'owner' else v}{'   <- was ' + str(before[k]) if changed else ''}")
+
+
+def rpc(url, key, method, params):
+    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
+    req = urllib.request.Request(
+        url, data=body, headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"}
+    )
+    with urllib.request.urlopen(req, timeout=600) as resp:
+        out = json.load(resp)
+    if out.get("error"):
+        sys.exit(f"{method} failed: {out['error']}")
+    return out["result"]
+
+
+def call_for(args, current):
+    """The one Board method call this command makes, as manifest text."""
+    if args.cmd == "set-fee":
+        if not 0 <= args.bps <= 10_000:
+            sys.exit("the fee is in basis points, 0 to 10,000 (100%)")
+        if not 0 <= args.caravel_pct <= 100:
+            sys.exit("Caravel's share is a percentage, 0 to 100")
+        return f"board.set_fee({args.bps}u16, {args.caravel_pct}u8);"
+    if args.cmd == "set-fee-account":
+        if not args.account.startswith("component_"):
+            sys.exit("the fee account is a component address (component_...)")
+        # set_accounts takes both; the Burn Wallet stays as it is.
+        return f'board.set_accounts(address!("{args.account}"), address!("{current["burn_wallet"]}"));'
+    if args.cmd == "set-min":
+        try:
+            micro = Decimal(args.tari) * UNIT
+        except InvalidOperation:
+            sys.exit("the minimum order is a number of tTARI")
+        if micro != micro.to_integral_value() or micro <= 0:
+            sys.exit("the minimum order must be positive, with at most 6 decimals")
+        return f"board.set_min_order(amount!({int(micro)}));"
+    if args.cmd == "pause":
+        return "board.pause();"
+    if args.cmd == "unpause":
+        return "board.unpause();"
+    raise AssertionError(args.cmd)
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--board", default=BOARD)
+    ap.add_argument("--wallet", default="http://localhost:5100/json_rpc")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("show", help="the live settings")
+    p = sub.add_parser("set-fee", help="fee in bps and Caravel's share in percent")
+    p.add_argument("bps", type=int)
+    p.add_argument("caravel_pct", type=int)
+    p = sub.add_parser("set-fee-account", help="Caravel's fee account")
+    p.add_argument("account")
+    p = sub.add_parser("set-min", help="minimum order in tTARI")
+    p.add_argument("tari")
+    sub.add_parser("pause", help="stop new orders")
+    sub.add_parser("unpause", help="resume new orders")
+    for name in ("set-fee", "set-fee-account", "set-min", "pause", "unpause"):
+        sub.choices[name].add_argument("--submit", action="store_true", help="send it for real after the dry run")
+    args = ap.parse_args()
+
+    component, source = read_board(args.board)
+    current = settings(component)
+    if args.cmd == "show":
+        print_settings(f"{args.board}  (read from {source})", current)
+        return
+
+    key = os.environ.get("TARI_WALLET_DAEMON_API_KEY")
+    if not key:
+        sys.exit("TARI_WALLET_DAEMON_API_KEY is not set")
+    if rpc(args.wallet, key, "wallet.get_info", {})["network"] != NETWORK:
+        sys.exit(f"the wallet daemon is not on {NETWORK}")
+    account = rpc(args.wallet, key, "accounts.get_default", {})["account"]["component_address"]
+    req = urllib.request.Request(f"{source}/substates/{account}", headers={"User-Agent": "caravel-trade-admin"})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        signer = json.load(resp)["substate"]["Component"]["header"]["owner_rule"]
+    if signer != current["owner"]:
+        sys.exit(f"the daemon's default account is owned by {signer}, but the Board's owner is {current['owner']}")
+
+    text = f"""
+fn main() {{
+    let mut board = global!["board"];
+    {call_for(args, current)}
+}}
+"""
+
+    def submit(max_fee, dry_run):
+        return rpc(args.wallet, key, "transactions.submit_manifest", {
+            "manifest": text, "variables": {"board": args.board}, "max_fee": max_fee, "dry_run": dry_run,
+        })
+
+    def board_after(finalize):
+        accept = finalize["result"].get("Accept")
+        if accept is None:
+            sys.exit(f"did not Accept: {json.dumps(finalize['result'])[:600]}")
+        for substate_id, substate in accept["up_substates"]:
+            if substate_id == args.board:
+                return settings(substate["substate"]["Component"])
+        # Accepted, but the Board's state is exactly what it was (e.g. unpause when not paused): the
+        # engine only writes a component whose state changed.
+        return current
+
+    print_settings(f"{args.board}  now", current)
+    dry = submit(DRY_RUN_MAX_FEE, True)
+    after = board_after(dry["result"]["finalize"])
+    if after == current:
+        print(f"dry run: Accept, fee {dry['required_fees']} µT; NO CHANGE: the Board already reads like that")
+    else:
+        print_settings(f"dry run: Accept, fee {dry['required_fees']} µT; the Board would be", after, current)
+    if not args.submit:
+        print("dry run only: nothing was sent (add --submit to send it)")
+        return
+
+    sent = submit(int(dry["required_fees"] * FEE_MARGIN), False)
+    tx = sent["transaction_id"]
+    waited = rpc(args.wallet, key, "transactions.wait_result", {"transaction_id": tx, "timeout_secs": 300})
+    if waited["timed_out"] or waited["result"] is None:
+        sys.exit(f"no final result for {tx} yet (status {waited['status']}); check it before retrying")
+    board_after(waited["result"])
+    print(f"ACCEPT  {tx}, fee {waited['final_fee']} µT")
+    print_settings("the Board now reads", settings(read_board(args.board)[0]), current)
+
+
+if __name__ == "__main__":
+    main()
