@@ -14,6 +14,9 @@ tags = ["trade", "testnet", "tari", "caravel"]
 category = "defi"
 documentation = "https://github.com/okansaglam016161-pixel/caravel-trade#readme"
 homepage = "https://github.com/okansaglam016161-pixel/caravel-trade"
+# The commit whose source produced the published WASM (it reaches only the metadata CBOR, never
+# the binary). Must be the full 40-hex SHA.
+commit_hash = "9cc9efb7c7934ffdbc9e1413df1f5763b3def439"
 
 [dependencies]
 tari_template_lib = { version = "0.34" }
