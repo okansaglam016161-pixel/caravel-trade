@@ -655,4 +655,18 @@ async function main() {
   throw new Error(`unknown command ${cmd}`)
 }
 
-main().catch(e => { console.error('ERROR:', e instanceof Error ? e.message : e); process.exit(1) })
+// Exported so a sibling script (e.g. the T2c dry-run attack harness) reuses this exact wallet,
+// scanning, statement and fee code instead of a divergent copy. Importing this file runs nothing:
+// main() runs only when live.ts is the entry point.
+export {
+  BOARD, ORDER_TEMPLATE, FAUCET, CUSD, TARI, SELL, BUY, STATUS, RESERVE,
+  crypto, hex, fromHex, short, getJson, hexOf, component, accountVaults, order, boardInfo,
+  identity, coins, pick, spend, receive, commitments, decodeOwn, payoutBytes,
+  call, ws, Tx, finish, provider, run, payPrivately, payPublicly, declareAccount, fund, resourceArg, take,
+  loadState, saveState, stealthTransferInstruction, publicKeyLiteral,
+}
+export type { Who, Order, Plan }
+
+if (path.resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
+  main().catch(e => { console.error('ERROR:', e instanceof Error ? e.message : e); process.exit(1) })
+}
