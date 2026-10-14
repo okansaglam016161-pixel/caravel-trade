@@ -22,6 +22,18 @@ fn a_claim_pays_10_000_cusd_into_the_claimers_hands() {
 }
 
 #[test]
+fn cusd_has_6_decimals_like_ttari() {
+    // Display units are base units / 10^divisibility: 10,000 cUSD is 10,000,000,000 base units, and
+    // the whole supply shows as exactly 1,000,000,000 cUSD.
+    let w = world();
+    let cusd = w.test.read_only_state_store().get_resource(&w.cusd).unwrap();
+    assert_eq!(cusd.divisibility(), 6);
+    assert_eq!(CLAIM, 10_000_000_000);
+    assert_eq!(cusd.total_supply(), Some(Amount::from(SUPPLY)));
+    assert_eq!(SUPPLY / 10u64.pow(u32::from(cusd.divisibility())), 1_000_000_000);
+}
+
+#[test]
 fn a_claim_can_be_made_private_in_the_same_transaction() {
     let mut w = world();
     let alice = w.party();

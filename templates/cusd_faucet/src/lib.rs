@@ -52,8 +52,11 @@ mod caravel_test_dollar {
                 .burnable(rule!(component(me)), LOCKED)
                 .build();
 
+            // 6 decimals, like tTARI: wallets and explorers show base units / 10^6. Without it the
+            // resource gets the default of 8, and 1,000,000,000 cUSD would display as 10,000,000.
             let cusd = ResourceBuilder::stealth()
                 .with_token_symbol("cUSD")
+                .with_divisibility(6)
                 .add_metadata("name", "Caravel Test Dollar")
                 .with_owner_rule(OwnerRule::None)
                 .mintable(rule!(deny_all), LOCKED)
