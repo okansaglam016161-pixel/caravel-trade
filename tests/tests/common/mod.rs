@@ -8,7 +8,8 @@ use tari_template_lib::prelude::{Amount, ComponentAddress, OwnerRule, ResourceAd
 use tari_template_lib::types::bytes::Bytes;
 use tari_template_lib::types::crypto::RistrettoPublicKeyBytes;
 use tari_template_lib::types::stealth::StealthTransferStatement;
-use tari_template_test_tooling::TemplateTest;
+use tari_template_lib::prelude::TemplateAddress;
+use tari_template_test_tooling::{Package, TemplateTest};
 use tari_template_test_tooling::byte_type::ToByteType;
 use tari_template_test_tooling::crypto::{PublicKey, RistrettoPublicKey, RistrettoSecretKey, SecretKey};
 use tari_template_test_tooling::support::spec::{OutputAuthSpec, OutputSpec};
@@ -104,8 +105,46 @@ pub struct World {
     pub owner: Party,
 }
 
+/// The three production templates: their path in a test's template list, the file holding the
+/// on-chain binary, and the address it was published at on esmeralda (2026-10-14, Ootle 0.46.1).
+pub const PRODUCTION: [(&str, &str, &str); 3] = [
+    ("../templates/cusd_faucet", "cusd.wasm", "53257e747c3a4dc5714d2782cf775054d535378f229e31f24b07811176403748"),
+    ("../templates/board", "board.wasm", "6e9bb8eba68c45e3b5301e1f5ce2e350927cfbffc392c6ed39a4ddb550b8834f"),
+    ("../templates/order", "order.wasm", "73aae2b35810bd46f471986baf797517a00b6a45e9eef924156b2edc4ae8d6d7"),
+];
+
+/// Which binaries a test runs against. By default every template is compiled from source, exactly as
+/// `TemplateTest::new` does. With `CARAVEL_TRADE_ONCHAIN=<dir>` set, the three production templates
+/// are instead THE BYTES PUBLISHED ON-CHAIN (`<dir>/cusd.wasm`, `board.wasm`, `order.wasm`, the
+/// `binary` field of `GET /substates/template_<address>`), registered under their published addresses.
+/// Test fixtures are always compiled from source.
+pub fn template_test<const N: usize>(paths: [&str; N]) -> TemplateTest {
+    let Ok(dir) = std::env::var("CARAVEL_TRADE_ONCHAIN") else {
+        return TemplateTest::new(env!("CARGO_MANIFEST_DIR"), paths);
+    };
+    let mut builder = Package::builder();
+    builder.add_all_builtin_templates();
+    for path in paths {
+        match PRODUCTION.iter().find(|(p, _, _)| *p == path) {
+            Some((_, file, address)) => {
+                let file = std::path::Path::new(&dir).join(file);
+                let code = std::fs::read(&file).unwrap_or_else(|e| panic!("{}: {e}", file.display()));
+                let address = TemplateAddress::from_hex(address).expect("published template address");
+                builder.add_template_from_code(address, code).expect("load the on-chain binary");
+            },
+            None => {
+                builder.add_template(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(path));
+            },
+        }
+    }
+    // Exactly what TemplateTest::new does after building its package.
+    let mut test = TemplateTest::from_package(builder.build());
+    test.bootstrap_state();
+    test
+}
+
 pub fn world() -> World {
-    let mut test = TemplateTest::new(env!("CARGO_MANIFEST_DIR"), [
+    let mut test = template_test([
         "../templates/cusd_faucet",
         "../templates/board",
         "../templates/order",

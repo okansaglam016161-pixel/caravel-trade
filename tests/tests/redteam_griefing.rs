@@ -5,14 +5,13 @@ mod common;
 
 use common::*;
 use tari_template_lib::prelude::{Amount, ComponentAddress, OwnerRule, ResourceAddress, TARI_TOKEN};
-use tari_template_test_tooling::TemplateTest;
 use tari_template_test_tooling::transaction::args;
 
 const N: u64 = 100 * T;
 const P: u64 = 50 * T;
 
 fn world() -> World {
-    let mut test = TemplateTest::new(env!("CARGO_MANIFEST_DIR"), [
+    let mut test = template_test([
         "../templates/cusd_faucet",
         "../templates/board",
         "../templates/order",
