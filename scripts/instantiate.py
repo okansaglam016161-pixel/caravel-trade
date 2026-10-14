@@ -25,8 +25,8 @@ import urllib.request
 NETWORK = "esmeralda"
 INDEXER = "https://ootle-indexer-a.tari.com"
 
-# Published on esmeralda on 2026-10-14 (Ootle 0.46.1), from commit 9cc9efb.
-CUSD_TEMPLATE = "53257e747c3a4dc5714d2782cf775054d535378f229e31f24b07811176403748"
+# Published on esmeralda on 2026-10-14 (Ootle 0.46.1): Board and Order from 9cc9efb, cUSD (6 decimals) from cd6b8c8.
+CUSD_TEMPLATE = "0338a252870a68f67b157ddee96045282094c5d55691fab82c25d85f9e188c0d"
 BOARD_TEMPLATE = "6e9bb8eba68c45e3b5301e1f5ce2e350927cfbffc392c6ed39a4ddb550b8834f"
 ORDER_TEMPLATE = "73aae2b35810bd46f471986baf797517a00b6a45e9eef924156b2edc4ae8d6d7"
 # The Caravel Burn Wallet (github.com/okansaglam016161-pixel/caravel-burn-wallet).
