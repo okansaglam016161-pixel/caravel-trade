@@ -14,8 +14,6 @@ tTARI vs Caravel Test Dollar (cUSD, testnet placeholder).
 Published and created on 2026-10-14 by the deployer key
 `20db90bffb62905d14b75369de9de8523d859bdec5f75e36929fbf9099781661`
 (`tari_template_lib` 0.34, `tari_ootle_template_build` 0.15, `tari-ootle-cli` 0.31, walletd 0.46.1).
-cUSD was republished the same day with 6 decimals; the first cUSD, its faucet and its Board are
-[deprecated](#deprecated-2026-10-14-cusd-with-8-decimals).
 
 ### Templates
 
@@ -61,26 +59,8 @@ Read live on both indexers after creation:
 * **Board:** owned by the deployer key; the four `place_*` methods and `is_paused` are `AllowAll`,
   everything else (the owner's settings) `DenyAll`. Settings: fee 100 bps (1%), split 70% Caravel / 30%
   Burn Wallet, Caravel fee account as above, Burn Wallet as above, minimum order 1 tTARI, quote token
-  cUSD (the 6-decimal one above), new orders open. The badge has a supply of exactly 1, minting
+  cUSD (above), new orders open. The badge has a supply of exactly 1, minting
   `DenyAll` and `Locked`.
-
-### Deprecated (2026-10-14): cUSD with 8 decimals
-
-The first cUSD template never set its divisibility and got the default of 8, so a wallet or explorer
-showed its supply as 10,000,000 cUSD and a claim as 100 cUSD. It was fixed in
-[`cd6b8c8`](https://github.com/okansaglam016161-pixel/caravel-trade/commit/cd6b8c8ec6d73a60d9c866262bb8818ce5a14d99)
-and republished, with a new faucet and a new Board (a Board's quote token is fixed at creation). The old
-ones stay on chain and are **not used by Caravel Trade**: do not claim from that faucet or place orders on
-that Board. Kept for the record:
-
-| | Address | Created in |
-|---|---|---|
-| cUSD + faucet template (8 decimals) | `template_53257e747c3a4dc5714d2782cf775054d535378f229e31f24b07811176403748` | `cc4b357447adcca015cdff7bae7f098ce0994e24793bb39eb384c18612035694` |
-| cUSD faucet | `component_bb001707be638663cc88e8feee6fc2b7c391a7640d85c9326e1c9b637d5ca416` | `600155edfcb2bd739e7640449bd974cfb444f76c97fa2eddbef9ebc279f537d4` |
-| cUSD (8 decimals) | `resource_bb1b1fb0d3ccf5cf196d8b754bf0df8ae16a9ec323f823ec1359e60c592a084d` | (with the faucet) |
-| Board (quote = the 8-decimal cUSD) | `component_353a1767f7d1f98984120d1ce5adc1bf7f9b58093b3c4d5539fc106fd2e7526d` | `1b2c5ac8fc51f7e75c29bca14634664b5881c0ded1595454d57e6eef2d830c91` |
-
-The Board and Order templates were not affected and are still the live ones.
 
 ## Admin
 

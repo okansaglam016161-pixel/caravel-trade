@@ -26,7 +26,7 @@ from decimal import Decimal, InvalidOperation
 
 NETWORK = "esmeralda"
 INDEXERS = ["https://ootle-indexer-a.tari.com", "https://ootle-indexer-b.tari.com"]
-# Created on esmeralda on 2026-10-14 with the 6-decimal cUSD (see the README's Live deployment).
+# Created on esmeralda on 2026-10-14 (see the README's Live deployment).
 BOARD = "component_278c4da6fd49c03d2735355241bbb29e01748712e2377657769bfbcc365c3bdc"
 BOARD_TEMPLATE = "6e9bb8eba68c45e3b5301e1f5ce2e350927cfbffc392c6ed39a4ddb550b8834f"
 

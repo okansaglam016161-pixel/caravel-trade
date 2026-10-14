@@ -106,8 +106,7 @@ pub struct World {
 }
 
 /// The three production templates: their path in a test's template list, the file holding the
-/// on-chain binary, and the address it was published at on esmeralda (2026-10-14, Ootle 0.46.1; cUSD
-/// republished the same day with 6 decimals).
+/// on-chain binary, and the address it was published at on esmeralda (2026-10-14, Ootle 0.46.1).
 pub const PRODUCTION: [(&str, &str, &str); 3] = [
     ("../templates/cusd_faucet", "cusd.wasm", "0338a252870a68f67b157ddee96045282094c5d55691fab82c25d85f9e188c0d"),
     ("../templates/board", "board.wasm", "6e9bb8eba68c45e3b5301e1f5ce2e350927cfbffc392c6ed39a4ddb550b8834f"),
