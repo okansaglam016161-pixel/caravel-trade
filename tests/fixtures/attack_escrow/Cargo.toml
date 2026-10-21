@@ -16,13 +16,13 @@ documentation = "https://github.com/okansaglam016161-pixel/caravel-trade#readme"
 homepage = "https://github.com/okansaglam016161-pixel/caravel-trade"
 
 [dependencies]
-tari_template_lib = { version = "0.34" }
+tari_template_lib = { version = "0.35" }
 
 [lib]
 crate-type = ["cdylib"]
 
 [build-dependencies]
-tari_ootle_template_build = "0.15.0"
+tari_ootle_template_build = "0.16.0"
 
 # The size profile `tari build` / `tari publish` pass, so a plain `cargo build --release` matches.
 [profile.release]

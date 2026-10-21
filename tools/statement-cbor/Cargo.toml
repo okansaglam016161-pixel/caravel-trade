@@ -6,8 +6,8 @@ publish = false
 description = "Turn a stealth transfer statement's JSON wire form into the tari_bor CBOR an Order stores as its payout."
 
 [dependencies]
-tari_template_lib_types = { version = "0.34.1", features = ["serde"] }
-tari_bor = "=0.16.4"
+tari_template_lib_types = { version = "0.35.0", features = ["serde"] }
+tari_bor = "=0.16.5"
 serde_json = "1"
 
 # Its own workspace: not part of the tests crate.

@@ -6,7 +6,7 @@ tTARI vs Caravel Test Dollar (cUSD, testnet placeholder).
 
 1% fee per trade: 0.7% Caravel, 0.3% burned in the Caravel Burn Wallet.
 
-> **Testnet only.** Everything here runs on the Ootle esmeralda testnet (Ootle 0.46.1, protocol V2).
+> **Testnet only.** Everything here runs on the Ootle esmeralda testnet (Ootle 0.47, protocol V2).
 > tTARI and cUSD have no value, and the contracts are not designed for value. Work in progress.
 
 ## Live deployment (esmeralda)
@@ -14,6 +14,12 @@ tTARI vs Caravel Test Dollar (cUSD, testnet placeholder).
 Published and created on 2026-10-14 by the deployer key
 `20db90bffb62905d14b75369de9de8523d859bdec5f75e36929fbf9099781661`
 (`tari_template_lib` 0.34, `tari_ootle_template_build` 0.15, `tari-ootle-cli` 0.31, walletd 0.46.1).
+
+The network is now on Ootle 0.47, and the source here builds with `tari_template_lib` 0.35,
+`tari_ootle_template_build` 0.16 and `tari_template_test_tooling` 0.47. The deployed templates are still
+the 0.46.1 builds above; nothing was republished. All three were checked live on 0.47: their on-chain
+binaries import only `env.tari_engine` and `env.on_panic`, and dry runs of a place and a faucet claim were
+accepted.
 
 ### Templates
 
@@ -108,4 +114,5 @@ On 2026-10-14 all 48 tests passed both ways against the live templates above, an
   substate but it was not found: template_...". So a manifest passing `address!("template_...")` to a
   function always fails through the daemon. A function whose parameter is a `TemplateAddress` (a bare
   `Hash32`) can take `hex_bytes!("...")` instead, which is what `scripts/instantiate.py` does. Present in
-  0.46.1 and on `development` as of 2026-10-14.
+  0.46.1 and on `development` as of 2026-10-14. The TS SDK fix shipped in `@tari-project/ootle` 0.11.0
+  (tari-ootle#2986).
