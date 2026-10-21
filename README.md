@@ -114,5 +114,6 @@ On 2026-10-14 all 48 tests passed both ways against the live templates above, an
   substate but it was not found: template_...". So a manifest passing `address!("template_...")` to a
   function always fails through the daemon. A function whose parameter is a `TemplateAddress` (a bare
   `Hash32`) can take `hex_bytes!("...")` instead, which is what `scripts/instantiate.py` does. Present in
-  0.46.1 and on `development` as of 2026-10-14. The TS SDK fix shipped in `@tari-project/ootle` 0.11.0
-  (tari-ootle#2986).
+  0.46.1 and on `development` as of 2026-10-14. The 0.47.0 changelog lists it fixed in walletd ("every
+  referenced substate kind is detected as an input", tari-ootle#2942); not re-tested here, and
+  `hex_bytes!` keeps working either way.
