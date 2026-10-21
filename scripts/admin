@@ -15,6 +15,9 @@ The Board is owned by the deployer's key, so the transaction must be sealed by i
 with its default account's key, and the script refuses to run unless that key is the Board's owner.
 Settings only ever apply to orders placed afterwards. Fees are paid from the default account's
 public balance. The API key is read from the environment and only ever sent as a bearer token.
+
+Exit status: 0 on Accept; 3 if the transaction was submitted but has no final result yet (it may
+still land, so do not resubmit: check it first); 1 on any failure.
 """
 
 import argparse
@@ -37,6 +40,21 @@ UNIT = 1_000_000   # µT per tTARI
 # The Board's state, in field order (templates/board/src/lib.rs).
 FIELDS = ["order_template", "quote", "fee_bps", "caravel_pct", "caravel_account", "burn_wallet",
           "min_order", "paused", "badge", "badge_resource"]
+
+
+def substate_value(body):
+    """The value of a GET /substates/<id> body, in either indexer shape, or None for a down answer.
+
+    Ootle 0.47 serves it at state.up.substate (0.46: substate). A down answer only comes back for a
+    request with include_proof that names a version, which this script never sends.
+    """
+    state = body.get("state") if isinstance(body, dict) else None
+    if isinstance(state, dict):
+        if "up" in state:
+            return state["up"]["substate"]
+        if "down" in state:
+            return None
+    return body.get("substate") if isinstance(body, dict) else None
 
 
 def hexof(value):
@@ -72,7 +90,7 @@ def read_board(board):
         try:
             req = urllib.request.Request(f"{base}/substates/{board}", headers={"User-Agent": "caravel-trade-admin"})
             with urllib.request.urlopen(req, timeout=60) as resp:
-                return json.load(resp)["substate"]["Component"], base
+                return substate_value(json.load(resp))["Component"], base
         except Exception as e:  # noqa: BLE001 (try the other indexer, report the last failure)
             last = e
     sys.exit(f"could not read {board}: {last}")
@@ -85,7 +103,21 @@ def print_settings(title, s, before=None):
         print(f"  {k:<16}{json.dumps(v) if k == 'owner' else v}{'   <- was ' + str(before[k]) if changed else ''}")
 
 
-def rpc(url, key, method, params):
+# walletd 0.47+: a result wait that runs out of time is a JSON-RPC error with this code instead of a
+# timed-out result. The transaction is still in flight and may yet land, so it is not a failure.
+TRANSACTION_PENDING = 1003
+# Exit status for "submitted, no final result yet" (sys.exit with a message exits 1, a failure).
+EXIT_PENDING = 3
+
+
+class RpcError(Exception):
+    def __init__(self, method, error):
+        super().__init__(f"{method} failed: {error}")
+        self.code = error.get("code") if isinstance(error, dict) else None
+
+
+def rpc(url, key, method, params, raise_codes=()):
+    """Call walletd. Any JSON-RPC error exits, except a code in `raise_codes`, which raises RpcError."""
     body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
     req = urllib.request.Request(
         url, data=body, headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"}
@@ -93,8 +125,33 @@ def rpc(url, key, method, params):
     with urllib.request.urlopen(req, timeout=600) as resp:
         out = json.load(resp)
     if out.get("error"):
-        sys.exit(f"{method} failed: {out['error']}")
+        err = RpcError(method, out["error"])
+        if err.code in raise_codes:
+            raise err
+        sys.exit(str(err))
     return out["result"]
+
+
+def still_pending(tx_id, status):
+    """Submitted, no final result yet. Not a failure, and never resubmitted: it may still land."""
+    print(f"PENDING       {tx_id} has no final result yet ({status}); it may still land.")
+    print("              Do not resubmit. Check it later with walletd's transactions.get_result:")
+    print(f'              {{"transaction_id": "{tx_id}"}}')
+    sys.exit(EXIT_PENDING)
+
+
+def wait_final(url, key, tx_id):
+    """The final result of a submitted transaction, or exit EXIT_PENDING if it has none yet."""
+    try:
+        waited = rpc(url, key, "transactions.wait_result", {"transaction_id": tx_id, "timeout_secs": 300},
+                     raise_codes=(TRANSACTION_PENDING,))
+    except RpcError:
+        still_pending(tx_id, "the wait timed out")
+    # walletd before 0.47 answers a timed-out wait with a result instead of error 1003.
+    if waited.get("timed_out") or waited.get("result") is None:
+        still_pending(tx_id, f"status {waited['status']}")
+    return waited
+
 
 
 def call_for(args, current):
@@ -158,7 +215,7 @@ def main():
     account = rpc(args.wallet, key, "accounts.get_default", {})["account"]["component_address"]
     req = urllib.request.Request(f"{source}/substates/{account}", headers={"User-Agent": "caravel-trade-admin"})
     with urllib.request.urlopen(req, timeout=60) as resp:
-        signer = json.load(resp)["substate"]["Component"]["header"]["owner_rule"]
+        signer = substate_value(json.load(resp))["Component"]["header"]["owner_rule"]
     if signer != current["owner"]:
         sys.exit(f"the daemon's default account is owned by {signer}, but the Board's owner is {current['owner']}")
 
@@ -198,9 +255,7 @@ fn main() {{
 
     sent = submit(int(dry["required_fees"] * FEE_MARGIN), False)
     tx = sent["transaction_id"]
-    waited = rpc(args.wallet, key, "transactions.wait_result", {"transaction_id": tx, "timeout_secs": 300})
-    if waited["timed_out"] or waited["result"] is None:
-        sys.exit(f"no final result for {tx} yet (status {waited['status']}); check it before retrying")
+    waited = wait_final(args.wallet, key, tx)
     board_after(waited["result"])
     print(f"ACCEPT  {tx}, fee {waited['final_fee']} µT")
     print_settings("the Board now reads", settings(read_board(args.board)[0]), current)

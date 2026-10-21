@@ -93,7 +93,7 @@ cd tests
 cargo test                                    # 48 tests: functional, red team, on-chain ABI
 ```
 
-Against the exact on-chain binaries: download the `binary` field (hex) of `GET /substates/template_<address>`
+Against the exact on-chain binaries: download the `binary` field (hex) of `GET /substates/template_<address>` (at `state.up.substate.Template.binary` since Ootle 0.47; `substate.Template.binary` before)
 for each template into one directory as `cusd.wasm`, `board.wasm` and `order.wasm`, then
 
 ```sh

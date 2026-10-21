@@ -14,6 +14,9 @@ board   CaravelTradeBoard::new(owner, order_template, cUSD, caravel_account, bur
 Fees are paid from the deployer account's public balance (the daemon's default account), and
 anything above the real cost is refunded. The API key is read from the environment and only ever
 sent as a bearer token.
+
+Exit status: 0 on Accept; 3 if the transaction was submitted but has no final result yet (it may
+still land, so do not resubmit: check it first); 1 on any failure.
 """
 
 import argparse
@@ -38,7 +41,21 @@ DRY_RUN_MAX_FEE = 1_000_000
 FEE_MARGIN = 1.10
 
 
-def rpc(url, key, method, params):
+# walletd 0.47+: a result wait that runs out of time is a JSON-RPC error with this code instead of a
+# timed-out result. The transaction is still in flight and may yet land, so it is not a failure.
+TRANSACTION_PENDING = 1003
+# Exit status for "submitted, no final result yet" (sys.exit with a message exits 1, a failure).
+EXIT_PENDING = 3
+
+
+class RpcError(Exception):
+    def __init__(self, method, error):
+        super().__init__(f"{method} failed: {error}")
+        self.code = error.get("code") if isinstance(error, dict) else None
+
+
+def rpc(url, key, method, params, raise_codes=()):
+    """Call walletd. Any JSON-RPC error exits, except a code in `raise_codes`, which raises RpcError."""
     body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
     req = urllib.request.Request(
         url, data=body, headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"}
@@ -46,8 +63,47 @@ def rpc(url, key, method, params):
     with urllib.request.urlopen(req, timeout=600) as resp:
         out = json.load(resp)
     if out.get("error"):
-        sys.exit(f"{method} failed: {out['error']}")
+        err = RpcError(method, out["error"])
+        if err.code in raise_codes:
+            raise err
+        sys.exit(str(err))
     return out["result"]
+
+
+def still_pending(tx_id, status):
+    """Submitted, no final result yet. Not a failure, and never resubmitted: it may still land."""
+    print(f"PENDING       {tx_id} has no final result yet ({status}); it may still land.")
+    print("              Do not resubmit. Check it later with walletd's transactions.get_result:")
+    print(f'              {{"transaction_id": "{tx_id}"}}')
+    sys.exit(EXIT_PENDING)
+
+
+def wait_final(url, key, tx_id):
+    """The final result of a submitted transaction, or exit EXIT_PENDING if it has none yet."""
+    try:
+        waited = rpc(url, key, "transactions.wait_result", {"transaction_id": tx_id, "timeout_secs": 300},
+                     raise_codes=(TRANSACTION_PENDING,))
+    except RpcError:
+        still_pending(tx_id, "the wait timed out")
+    # walletd before 0.47 answers a timed-out wait with a result instead of error 1003.
+    if waited.get("timed_out") or waited.get("result") is None:
+        still_pending(tx_id, f"status {waited['status']}")
+    return waited
+
+
+def substate_value(body):
+    """The value of a GET /substates/<id> body, in either indexer shape, or None for a down answer.
+
+    Ootle 0.47 serves it at state.up.substate (0.46: substate). A down answer only comes back for a
+    request with include_proof that names a version, which these scripts never send.
+    """
+    state = body.get("state") if isinstance(body, dict) else None
+    if isinstance(state, dict):
+        if "up" in state:
+            return state["up"]["substate"]
+        if "down" in state:
+            return None
+    return body.get("substate") if isinstance(body, dict) else None
 
 
 def indexer(path):
@@ -68,13 +124,13 @@ def tagged_hex(value):
 
 def cusd_of(faucet):
     """The cUSD resource address, read from the live faucet: its supply vault's resource."""
-    component = indexer(f"/substates/{faucet}")["substate"]["Component"]
+    component = substate_value(indexer(f"/substates/{faucet}"))["Component"]
     if component["header"]["template_address"] != CUSD_TEMPLATE:
         sys.exit(f"{faucet} is not a cUSD faucet (template {component['header']['template_address'][:16]})")
     state = component["body"]["state"]  # struct fields in order: [supply, receipts]
     vault = state[0] if isinstance(state, list) else state["supply"]
     vault_id = f"vault_{tagged_hex(vault)}"
-    container = indexer(f"/substates/{vault_id}")["substate"]["Vault"]["resource_container"]
+    container = substate_value(indexer(f"/substates/{vault_id}"))["Vault"]["resource_container"]
     kind, body = next(iter(container.items()))
     resource = body["address"]
     return resource if resource.startswith("resource_") else f"resource_{resource}"
@@ -141,7 +197,7 @@ fn main() {{
         template = BOARD_TEMPLATE
         cusd = cusd_of(args.faucet)
         # The owner: the deployer account's own key, read from its owner rule on-chain.
-        header = indexer(f"/substates/{account_address}")["substate"]["Component"]["header"]
+        header = substate_value(indexer(f"/substates/{account_address}"))["Component"]["header"]
         owner_pk = header["owner_rule"]["ByPublicKey"]
         print(f"owner         ByPublicKey({owner_pk})")
         print(f"quote (cUSD)  {cusd}")
@@ -186,9 +242,7 @@ fn main() {{
     sent = submit(max_fee, False)
     tx_id = sent["transaction_id"]
     print(f"submitted     {tx_id} (max fee {max_fee} µT)")
-    waited = rpc(args.wallet, key, "transactions.wait_result", {"transaction_id": tx_id, "timeout_secs": 300})
-    if waited["timed_out"] or waited["result"] is None:
-        sys.exit(f"no final result for {tx_id} yet (status {waited['status']}); check it before retrying")
+    waited = wait_final(args.wallet, key, tx_id)
     component = created(waited["result"], template)
     if component is None:
         sys.exit(f"{tx_id} did not Accept: {json.dumps(waited['result']['result'])[:800]}")

@@ -26,7 +26,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   Mask, Network, StealthInput, StealthTransferStatement, TARI_RESOURCE_ADDRESS, TransactionBuilder, WasmStealthCrypto,
-  amountLiteral, bytesLiteral, componentAddressLiteral, createOutput, resourceAddressLiteral, decryptOwnedUtxo, generateSealKeypair,
+  amountLiteral, bytesLiteral, componentAddressLiteral, createOutput, resourceAddressLiteral, generateSealKeypair,
   publicKeyLiteral, sealTransaction, serializeUnsignedTx, signBalanceProof, signTransaction, stealthTransferInstruction,
   stealthUtxoSubstateId,
 } from '@tari-project/ootle'
@@ -42,6 +42,8 @@ import { simulateFee } from 'caravel:src/crypto/feeProbe'
 import { awaitFinality } from 'caravel:src/crypto/finality'
 import { feesPaid } from 'caravel:src/crypto/conceal'
 import { INDEXER_URL, INDEXER_URLS } from 'caravel:src/crypto/indexerConfig'
+import { openOwnedUtxo } from 'caravel:src/crypto/openUtxo'
+import { substateValueOf, upgradeSubstateBody } from 'caravel:src/crypto/substateShape'
 
 // ── The live deployment (README) ─────────────────────────────────────────────
 const BOARD = 'component_278c4da6fd49c03d2735355241bbb29e01748712e2377657769bfbcc365c3bdc'
@@ -72,7 +74,9 @@ async function getJson(p: string, base = INDEXER_URL): Promise<any> {
     try {
       const r = await fetch(url + p, { headers: { 'user-agent': 'caravel-trade' }, signal: AbortSignal.timeout(20_000) })
       if (r.status === 404) return null
-      if (r.ok) return await r.json()
+      // A substate read in either indexer shape (Caravel's crypto/substateShape): Ootle 0.47 serves
+      // the value at `state.up.substate`, and a `down` is the 404 it stands for.
+      if (r.ok) return /^\/substates\/[^/?]+$/.test(p) ? upgradeSubstateBody(await r.json()) : await r.json()
     } catch { /* next indexer */ }
   }
   throw new Error(`no indexer answered ${p}`)
@@ -177,7 +181,8 @@ async function coins(who: Who, resource: string): Promise<OwnedUtxo[]> {
     list = []
     for (const [c, body] of rows) {
       const substateId = `utxo_${resHex}_${c}`
-      const d = await decryptOwnedUtxo(crypto, who.viewSecret, { version: 0, verified: false, substate: { Utxo: body } } as never, substateId)
+      // Caravel's one UTXO wrapper (crypto/openUtxo): null is "not ours", an unreadable row throws.
+      const d = await openOwnedUtxo(crypto, who.viewSecret, substateId, body)
       if (!d) continue
       const key = body?.output?.auth?.Key
       list.push({ substateId, commitment: fromHex(c), nonce: fromHex(body.output.output.public_nonce), value: d.value, mask: d.mask, ...(key ? { spendKey: fromHex(key) } : {}) })
@@ -186,7 +191,12 @@ async function coins(who: Who, resource: string): Promise<OwnedUtxo[]> {
   // A coin a lagging listing still shows after it was spent would only build a doomed transaction.
   const live: OwnedUtxo[] = []
   for (const c of list) {
-    const present = await Promise.all(INDEXER_URLS.map(async u => (await fetch(`${u}/substates/${c.substateId}`, { headers: { 'user-agent': 'caravel-trade' } })).status === 200))
+    const present = await Promise.all(INDEXER_URLS.map(async u => {
+      const r = await fetch(`${u}/substates/${c.substateId}`, { headers: { 'user-agent': 'caravel-trade' } })
+      if (r.status !== 200) return false
+      // Present AND live: a spent output answers 200 with `output: null`, in either shape.
+      return (substateValueOf(await r.json()) as any)?.Utxo?.output != null
+    }))
     if (present.every(Boolean)) live.push(c)
   }
   return live
@@ -231,7 +241,7 @@ async function decodeOwn(who: Who, resource: string, outs: any, index: number): 
   const raw = outs.parsed().outputs[index]
   const o = { ...raw, output: { ...raw.output, public_nonce: raw.output.public_nonce ?? raw.output.sender_public_nonce } }
   const substateId = `utxo_${resource.replace(/^resource_/, '')}_${o.output.commitment}`
-  const d = await decryptOwnedUtxo(crypto, who.viewSecret, { version: 0, verified: false, substate: { Utxo: { output: o, is_frozen: false } } } as never, substateId)
+  const d = await openOwnedUtxo(crypto, who.viewSecret, substateId, { output: o, is_frozen: false })
   if (!d || !o.auth?.Key) throw new Error('could not decode our own change output')
   return { substateId, commitment: fromHex(o.output.commitment), nonce: fromHex(o.output.public_nonce), value: d.value, mask: d.mask, spendKey: fromHex(o.auth.Key) }
 }
