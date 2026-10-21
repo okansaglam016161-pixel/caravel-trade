@@ -1,0 +1,36 @@
+[package]
+name = "caravel_test_dollar"
+version = "0.1.0"
+authors = ["Okz"]
+edition = "2024"
+# description / license / repository are read into the PUBLISHED template metadata by
+# tari_ootle_template_build, so they are filled in before the first publish.
+description = "Caravel Test Dollar (cUSD): a testnet placeholder stablecoin. Fixed supply of 1,000,000,000 held by a faucet that pays 10,000 cUSD once per wallet. No owner, no minting, burning, recall or freezing. Testnet only."
+license = "MIT"
+repository = "https://github.com/okansaglam016161-pixel/caravel-trade"
+
+[package.metadata.tari-template]
+tags = ["trade", "testnet", "tari", "caravel"]
+category = "token"
+documentation = "https://github.com/okansaglam016161-pixel/caravel-trade#readme"
+homepage = "https://github.com/okansaglam016161-pixel/caravel-trade"
+# The commit whose source produced the published WASM (it reaches only the metadata CBOR, never
+# the binary). Must be the full 40-hex SHA.
+commit_hash = "cd6b8c8ec6d73a60d9c866262bb8818ce5a14d99"
+
+[dependencies]
+tari_template_lib = { version = "0.35" }
+
+[lib]
+crate-type = ["cdylib"]
+
+[build-dependencies]
+tari_ootle_template_build = "0.16.0"
+
+# The size profile `tari build` / `tari publish` pass, so a plain `cargo build --release` matches.
+[profile.release]
+opt-level = 's'
+lto = true
+codegen-units = 1
+panic = 'abort'
+strip = true

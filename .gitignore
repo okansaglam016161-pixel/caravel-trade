@@ -15,3 +15,7 @@ scratchpad/
 
 # OS / editor
 .DS_Store
+target-wasm/
+
+# The trading client's cancel keys (scripts/live.ts, TRADE_STATE)
+.trade-state.json

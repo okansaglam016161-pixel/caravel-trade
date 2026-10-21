@@ -1,0 +1,33 @@
+[package]
+name = "caravel_mint_attempt"
+version = "0.1.0"
+authors = ["Okz"]
+edition = "2024"
+# description / license / repository are read into the PUBLISHED template metadata by
+# tari_ootle_template_build, so they are filled in before the first publish.
+description = "TEST FIXTURE: tries to mint, burn, recall and freeze cUSD, for the local fixed-supply test only."
+license = "MIT"
+repository = "https://github.com/okansaglam016161-pixel/caravel-trade"
+
+[package.metadata.tari-template]
+tags = ["trade", "testnet", "tari", "caravel"]
+category = "utility"
+documentation = "https://github.com/okansaglam016161-pixel/caravel-trade#readme"
+homepage = "https://github.com/okansaglam016161-pixel/caravel-trade"
+
+[dependencies]
+tari_template_lib = { version = "0.35" }
+
+[lib]
+crate-type = ["cdylib"]
+
+[build-dependencies]
+tari_ootle_template_build = "0.16.0"
+
+# The size profile `tari build` / `tari publish` pass, so a plain `cargo build --release` matches.
+[profile.release]
+opt-level = 's'
+lto = true
+codegen-units = 1
+panic = 'abort'
+strip = true
